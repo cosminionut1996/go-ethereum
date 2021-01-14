@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
@@ -31,6 +32,8 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 
 	//lint:ignore SA1019 Needed for precompile
+	"cosminionut/blake3"
+
 	"golang.org/x/crypto/ripemd160"
 )
 
@@ -99,6 +102,7 @@ var PrecompiledContractsYoloV2 = map[common.Address]PrecompiledContract{
 	common.BytesToAddress([]byte{16}): &bls12381Pairing{},
 	common.BytesToAddress([]byte{17}): &bls12381MapG1{},
 	common.BytesToAddress([]byte{18}): &bls12381MapG2{},
+	common.BytesToAddress([]byte{19}): &blake3F{},
 }
 
 var (
@@ -598,6 +602,56 @@ func (c *blake2F) Run(input []byte) ([]byte, error) {
 		binary.LittleEndian.PutUint64(output[offset:offset+8], h[i])
 	}
 	return output, nil
+}
+
+type blake3F struct{}
+
+func (c *blake3F) RequiredGas(input []byte) uint64 {
+	// If the input is malformed, we can't calculate the gas, return 0 and let the
+	// actual call choke and fault.
+	if len(input) != 112 {
+		return 0
+	}
+	return uint64(binary.BigEndian.Uint32(input[104:108]))
+}
+
+func (c *blake3F) Run(input []byte) ([]byte, error) {
+
+	var cv [8]uint32
+	var block [16]uint32
+	var counter uint64
+	var blockLen uint32
+	var flags uint32
+
+	for i := 0; i < 8; i++ {
+		offset := i * 4
+		cv[i] = binary.LittleEndian.Uint32(input[offset : offset+4])
+	}
+	for i := 8; i < 24; i++ {
+		offset := i * 4
+		block[i-8] = binary.LittleEndian.Uint32(input[offset : offset+4])
+	}
+
+	counter = binary.BigEndian.Uint64(input[96:104])
+	blockLen = binary.BigEndian.Uint32(input[104:108])
+	flags = binary.BigEndian.Uint32(input[108:112])
+
+	n := blake3.Node{
+		CV:       cv,
+		Block:    block,
+		Counter:  counter,
+		BlockLen: blockLen,
+		Flags:    flags,
+	}
+	p := make([]uint32, 16)
+	var q [16]uint32
+	copy(q[:], p[:16])
+	blake3.CompressNodeGeneric(&q, n)
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.LittleEndian, q)
+
+	return buf.Bytes(), nil
+	// return output, nil
 }
 
 var (
