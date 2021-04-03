@@ -18,7 +18,10 @@ package vm
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"math/big"
+	"os"
 	"sync/atomic"
 	"time"
 
@@ -74,6 +77,7 @@ func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 }
 
 // run runs the given contract and takes care of running precompiles with a fallback to the byte code interpreter.
+// maybe this
 func run(evm *EVM, contract *Contract, input []byte, readOnly bool) ([]byte, error) {
 	for _, interpreter := range evm.interpreters {
 		if interpreter.CanRun(contract.Code) {
@@ -221,6 +225,9 @@ func (evm *EVM) Interpreter() Interpreter {
 // the necessary steps to create accounts and reverses the state in case of an
 // execution error or failed value transfer.
 func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas uint64, value *big.Int) (ret []byte, leftOverGas uint64, err error) {
+
+	start := time.Now()
+
 	if evm.vmConfig.NoRecursion && evm.depth > 0 {
 		return nil, gas, nil
 	}
@@ -286,6 +293,20 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		//} else {
 		//	evm.StateDB.DiscardSnapshot(snapshot)
 	}
+
+	duration := time.Since(start)
+
+	var f *os.File
+
+	f, err = os.OpenFile("/Users/ionutcosmin/Documents/Dizertatie/stats/loggs", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Println(err)
+	}
+	defer f.Close()
+	if _, err := fmt.Fprintf(f, "%d %d \n", time.Now().UnixNano(), duration.Microseconds()); err != nil {
+		log.Fatal(err)
+	}
+
 	return ret, gas, err
 }
 

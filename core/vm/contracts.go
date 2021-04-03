@@ -17,11 +17,14 @@
 package vm
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"log"
 	"math/big"
+	"os"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
@@ -593,14 +596,31 @@ func (c *blake2F) Run(input []byte) ([]byte, error) {
 	t[0] = binary.LittleEndian.Uint64(input[196:204])
 	t[1] = binary.LittleEndian.Uint64(input[204:212])
 
+	// start := time.Now()
 	// Execute the compression function, extract and return the result
+	// for i := 0; i < 5000; i++ {
 	blake2b.F(&h, m, t, final, rounds)
+	// }
+	// duration := time.Since(start)
 
 	output := make([]byte, 64)
 	for i := 0; i < 8; i++ {
 		offset := i * 8
 		binary.LittleEndian.PutUint64(output[offset:offset+8], h[i])
 	}
+
+	// var f *os.File
+	// var err error
+
+	// f, err = os.OpenFile("/Users/ionutcosmin/Documents/Dizertatie/stats/blake2F_Run", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	// if err != nil {
+	// 	log.Println(err)
+	// }
+	// defer f.Close()
+	// if _, err := fmt.Fprintf(f, "%d, ", duration.Microseconds()); err != nil {
+	// 	log.Fatal(err)
+	// }
+
 	return output, nil
 }
 
@@ -617,11 +637,14 @@ func (c *blake3F) RequiredGas(input []byte) uint64 {
 
 func (c *blake3F) Run(input []byte) ([]byte, error) {
 
-	var cv [8]uint32
-	var block [16]uint32
-	var counter uint64
-	var blockLen uint32
-	var flags uint32
+	var (
+		q        [16]uint32
+		cv       [8]uint32
+		block    [16]uint32
+		counter  uint64
+		blockLen uint32
+		flags    uint32
+	)
 
 	for i := 0; i < 8; i++ {
 		offset := i * 4
@@ -643,15 +666,34 @@ func (c *blake3F) Run(input []byte) ([]byte, error) {
 		BlockLen: blockLen,
 		Flags:    flags,
 	}
-	p := make([]uint32, 16)
-	var q [16]uint32
-	copy(q[:], p[:16])
-	blake3.CompressNodeGeneric(&q, n)
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, q)
+	output := make([]byte, 64)
 
-	return buf.Bytes(), nil
-	// return output, nil
+	// time it
+	start := time.Now()
+	for i := 0; i < 5000; i++ {
+		blake3.CompressNodeGeneric(&q, n)
+	}
+	duration := time.Since(start)
+
+	// blake3.CompressNodeGeneric(&q, n)
+
+	for i := 0; i < 16; i++ {
+		binary.LittleEndian.PutUint32(output[i*4:(i+1)*4], q[i])
+	}
+
+	// write stuff
+	var f *os.File
+	var err error
+	f, err = os.OpenFile("/Users/ionutcosmin/Documents/Dizertatie/stats/blake3F_Run", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Println(err)
+	}
+	defer f.Close()
+	if _, err := fmt.Fprintf(f, "%d, ", duration.Microseconds()); err != nil {
+		log.Fatal(err)
+	}
+
+	return output, nil
 }
 
 var (
